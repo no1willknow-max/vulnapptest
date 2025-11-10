@@ -1,0 +1,38 @@
+name: Semgrep
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    container: semgrep/semgrep:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: .semgrep-cache
+          key: ${{ runner.os }}-semgrep-${{ hashFiles('.semgrep.yml') }}
+
+      # Комментарии в PR (опционально — нужен токен в Secrets: SEMGREP_APP_TOKEN)
+      - name: Semgrep CI (PR annotations)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: semgrep ci --config p/ci --config p/php --timeout 600
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      # Отчёт в Security → Code scanning
+      - name: Generate SARIF
+        run: semgrep scan --config p/ci --config p/php --sarif --output semgrep.sarif --timeout 600 || true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
